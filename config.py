@@ -27,6 +27,9 @@ class Config:
     MAX_MESSAGE_LENGTH = 4096
     MAX_MESSAGES_PER_10_MINUTES = 5  # Limit messages per user per 10 minutes per role
     
+    # Channel Configuration
+    CHANNEL_ID = int(os.getenv('CHANNEL_ID'))
+    
     @classmethod
     def validate_config(cls):
         """Validate that all required configuration is present"""

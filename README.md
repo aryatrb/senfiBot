@@ -52,6 +52,7 @@ ROLE_LEGAL_USER_ID=your_legal_user_id_here
 ROLE_EDUCATIONAL_1_USER_ID=your_educational_1_user_id_here
 ROLE_EDUCATIONAL_2_USER_ID=your_educational_2_user_id_here
 ROLE_PUBLICATION_USER_ID=your_publication_user_id_here
+
 ```
 
 ### ۳. ایجاد بات تلگرام
@@ -79,7 +80,20 @@ ROLE_PUBLICATION_USER_ID=your_publication_user_id_here
 2. یا از ایشان بخواهید شناسه کاربری خود را از تنظیمات تلگرام کپی کنند
 3. شناسه‌های دریافتی را در فایل `.env` قرار دهید
 
-### ۶. اجرای بات
+### ۶. تنظیم کانال لاگ
+
+بات تمام پیام‌ها را در یک کانال تلگرام لاگ می‌کند:
+
+1. یک کانال تلگرام ایجاد کنید
+2. بات را به عنوان ادمین به کانال اضافه کنید
+3. شناسه کانال را در فایل `.env` قرار دهید:
+   ```env
+   CHANNEL_ID=-x
+   ```
+   
+**نکته**: شناسه کانال باید منفی باشد (مثل `-x`)
+
+### ۷. اجرای بات
 
 #### روش ساده
 ```bash

@@ -38,8 +38,23 @@ class EnhancedCouncilBot:
         self.lock_file_path = "bot.lock"
         self.lock_file = None
         
+        # Channel ID for logging all messages
+        self.CHANNEL_ID = Config.CHANNEL_ID  # Get from config
+        
         # Load message mappings from database on startup
         self.load_message_mappings()
+    
+    async def send_to_channel(self, context: ContextTypes.DEFAULT_TYPE, message: str, parse_mode: str = 'HTML'):
+        """Send message to the logging channel"""
+        try:
+            await context.bot.send_message(
+                chat_id=self.CHANNEL_ID,
+                text=message,
+                parse_mode=parse_mode
+            )
+            logger.info(f"Message sent to channel {self.CHANNEL_ID}")
+        except Exception as e:
+            logger.error(f"Error sending message to channel: {e}")
     
     def acquire_lock(self) -> bool:
         """Try to acquire a lock to prevent multiple instances"""
@@ -587,6 +602,19 @@ class EnhancedCouncilBot:
 💬 برای پاسخ، روی این پیام ریپلای کنید.
         """
         
+        # Send to channel for logging with detailed student info
+        channel_message = f"""
+📨 <b>پیام جدید</b>
+
+🆔 <b>شناسه گفتگو:</b> #{thread_id}
+👤 <b>از:</b> {update.effective_user.first_name} ({username_display})
+🆔 <b>شناسه:</b> {user_id}
+📝 <b>به:</b> {role['role_name']}
+📝 <b>پیام:</b> {message_text}
+👤 <b>دانشجو:</b> ID: {user_id} | {username_display} | {update.effective_user.first_name}
+        """
+        await self.send_to_channel(context, channel_message)
+        
         try:
             sent_msg = await context.bot.send_message(
                 chat_id=admin_user_id,
@@ -932,6 +960,37 @@ class EnhancedCouncilBot:
                 ''', (thread_id,))
             msg_result = cursor.fetchone()
             conn.close()
+            
+            # Get student information for channel logging
+            conn = sqlite3.connect(self.db.db_path)
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT t.user_id, u.username, u.first_name 
+                FROM threads t 
+                LEFT JOIN users u ON t.user_id = u.user_id 
+                WHERE t.thread_id = ?
+            ''', (thread_id,))
+            student_result = cursor.fetchone()
+            conn.close()
+            
+            student_user_id = student_result[0] if student_result else "Unknown"
+            student_username = student_result[1] if student_result and student_result[1] else "بدون نام کاربری"
+            student_name = student_result[2] if student_result and student_result[2] else "نامشخص"
+            
+            # Format student info with both ID and username
+            student_display = f"ID: {student_user_id} | @{student_username} | {student_name}"
+            
+            # Send reply to channel for logging with detailed student info
+            channel_reply_message = f"""
+💬 <b>پاسخ</b>
+
+🆔 <b>شناسه گفتگو:</b> #{thread_id}
+👤 <b>از:</b> {sender_name}
+📝 <b>به:</b> {'دانشجو' if is_admin else role_name}
+📝 <b>پیام:</b> {reply_message}
+👤 <b>دانشجو:</b> {student_display}
+            """
+            await self.send_to_channel(context, channel_reply_message)
             
             # Send reply
             logger.info(f"Sending reply to {target_user_id} with text: {reply_text[:100]}...")

@@ -30,7 +30,7 @@ class Database:
                 role_id INTEGER PRIMARY KEY AUTOINCREMENT,
                 role_name TEXT UNIQUE NOT NULL,
                 user_id TEXT NOT NULL,
-                description TEXT NOT NULL,
+                description TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
@@ -85,7 +85,22 @@ class Database:
             )
         ''')
         
-        # Insert roles only if they have actual user IDs configured
+        # Always update roles from environment variables
+        self.update_roles_from_env()
+        
+        conn.commit()
+        conn.close()
+    
+    def update_roles_from_env(self):
+        """Update roles table from environment variables"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        # Clear existing roles and reset autoincrement
+        cursor.execute('DELETE FROM roles')
+        cursor.execute('DELETE FROM sqlite_sequence WHERE name = "roles"')
+        
+        # Insert roles from environment variables
         from config import Config
         
         role_configs = [
@@ -100,7 +115,7 @@ class Database:
             actual_user_id = Config.get_role_user_id(user_id_key)
             if actual_user_id:  # Only insert if user ID is configured
                 cursor.execute('''
-                    INSERT OR IGNORE INTO roles (role_name, user_id, description)
+                    INSERT INTO roles (role_name, user_id, description)
                     VALUES (?, ?, ?)
                 ''', (role_name, actual_user_id, description))
         
