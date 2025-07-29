@@ -120,9 +120,13 @@ class EnhancedCouncilBot:
                 callback_data=f"role_{role['role_id']}"
             )])
         
-        keyboard.append([InlineKeyboardButton("📋 گفتگوهای قبلی", callback_data="show_threads")])
+        keyboard.append([InlineKeyboardButton("👥 گروه شورای صنفی", url="https://t.me/shora_sharif")])
         keyboard.append([InlineKeyboardButton("🆔 شناسه من", callback_data="get_user_id")])
         keyboard.append([InlineKeyboardButton("❓ راهنما", callback_data="help")])
+        
+        # Add block list button only for admins and role users
+        if self.is_admin_user(update.effective_user.id):
+            keyboard.append([InlineKeyboardButton("📋 لیست کاربران بلاک شده", callback_data="blocks_main_menu")])
         
         reply_markup = InlineKeyboardMarkup(keyboard)
         
@@ -161,11 +165,7 @@ class EnhancedCouncilBot:
         query = update.callback_query
         await query.answer()
         
-        if query.data == "show_threads":
-            await self.show_user_threads(update, context)
-            return CHOOSING_ROLE
-        
-        elif query.data == "get_user_id":
+        if query.data == "get_user_id":
             await self.get_user_id(update, context)
             return CHOOSING_ROLE
         
@@ -177,10 +177,35 @@ class EnhancedCouncilBot:
             await self.show_role_menu(update, context)
             return CHOOSING_ROLE
         
-        elif query.data.startswith("continue_thread_"):
-            thread_id = int(query.data.split("_")[2])
-            await self.continue_thread(update, context, thread_id)
-            return WAITING_FOR_MESSAGE
+        elif query.data == "blocks_main_menu":
+            # Show block list for main menu (only for admins)
+            if not self.is_admin_user(query.from_user.id):
+                await query.answer("❌ فقط مسئولین می‌توانند لیست کاربران بلاک شده را مشاهده کنند.")
+                return CHOOSING_ROLE
+            
+            # Get blocked users for this admin
+            blocked_users = self.db.get_blocked_users(query.from_user.id)
+            
+            if not blocked_users:
+                text = "📋 **لیست کاربران بلاک شده:**\n\n"
+                text += "✅ هیچ کاربری بلاک نشده است."
+            else:
+                text = "📋 **لیست کاربران بلاک شده:**\n\n"
+                for i, user in enumerate(blocked_users, 1):
+                    text += f"{i}. **شناسه:** `{user['user_id']}`\n"
+                    text += f"   **تاریخ بلاک:** {user['blocked_at']}\n"
+                    text += f"   **دلیل:** {user['reason']}\n\n"
+            
+            # Create back button
+            keyboard = [[InlineKeyboardButton("🔙 بازگشت", callback_data="back_to_menu")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await query.edit_message_text(
+                text=text,
+                reply_markup=reply_markup,
+                parse_mode=ParseMode.MARKDOWN
+            )
+            return CHOOSING_ROLE
         
         elif query.data == "send_message":
             # Create reply keyboard for typing
@@ -207,32 +232,7 @@ class EnhancedCouncilBot:
             )
             return WAITING_FOR_MESSAGE
         
-        elif query.data == "new_thread":
-            # Create new thread for current role
-            user_id = query.from_user.id
-            if user_id in self.user_states:
-                role = self.user_states[user_id]['selected_role']
-                thread_id = self.db.create_thread(user_id, role['role_id'])
-                self.user_states[user_id]['thread_id'] = thread_id
-                
-                keyboard = [
-                    [InlineKeyboardButton("📝 ارسال پیام", callback_data="send_message")],
-                    [InlineKeyboardButton("🔙 بازگشت", callback_data="back_to_role")]
-                ]
-                reply_markup = InlineKeyboardMarkup(keyboard)
-                
-                await query.edit_message_text(
-                    text=f"✅ **گفتگوی جدید ایجاد شد!**\n\n"
-                    f"مسئول: {role['role_name']}\n"
-                    f"🆔 شناسه گفتگو: #{thread_id}\n\n"
-                    f"برای ارسال پیام، روی «📝 ارسال پیام» کلیک کنید.",
-                    reply_markup=reply_markup,
-                    parse_mode=ParseMode.MARKDOWN
-                )
-                return WAITING_FOR_MESSAGE
-            else:
-                await query.edit_message_text("❌ خطا: لطفاً ابتدا مسئول را انتخاب کنید.")
-                return CHOOSING_ROLE
+
         
         elif query.data == "back_to_role":
             # Go back to role selection for current role
@@ -244,39 +244,126 @@ class EnhancedCouncilBot:
                 if thread_id:
                     keyboard = [
                         [InlineKeyboardButton("📝 ارسال پیام", callback_data="send_message")],
-                        [InlineKeyboardButton("🆕 گفتگوی جدید", callback_data="new_thread")],
-                        [InlineKeyboardButton("📋 گفتگوهای قبلی", callback_data="show_threads")],
                         [InlineKeyboardButton("🏠 منوی اصلی", callback_data="back_to_menu")]
                     ]
                     reply_markup = InlineKeyboardMarkup(keyboard)
                     
                     await query.edit_message_text(
-                        text=f"✅ **گفتگوی فعال**\n\n"
-                        f"مسئول: {role['role_name']}\n"
+                        text=f"✅ **گفتگو با {role['role_name']}**\n\n"
                         f"🆔 شناسه گفتگو: #{thread_id}\n\n"
                         f"برای ارسال پیام، روی «📝 ارسال پیام» کلیک کنید.",
                         reply_markup=reply_markup,
                         parse_mode=ParseMode.MARKDOWN
                     )
                 else:
-                    keyboard = [
-                        [InlineKeyboardButton("📝 ارسال پیام", callback_data="send_message")],
-                        [InlineKeyboardButton("📋 گفتگوهای قبلی", callback_data="show_threads")],
-                        [InlineKeyboardButton("🏠 منوی اصلی", callback_data="back_to_menu")]
-                    ]
-                    reply_markup = InlineKeyboardMarkup(keyboard)
-                    
-                    await query.edit_message_text(
-                        text=f"✅ **مسئول انتخاب شده**\n\n"
-                        f"مسئول: {role['role_name']}\n\n"
-                        f"برای ارسال پیام، روی «📝 ارسال پیام» کلیک کنید.",
-                        reply_markup=reply_markup,
-                        parse_mode=ParseMode.MARKDOWN
-                    )
+                    await self.show_role_menu(update, context)
                 return CHOOSING_ROLE
             else:
                 await self.show_role_menu(update, context)
                 return CHOOSING_ROLE
+        
+        # Handle block buttons for admins
+        elif query.data.startswith("block_"):
+            # Check if user is admin
+            if not self.is_admin_user(query.from_user.id):
+                await query.answer("❌ فقط مسئولین می‌توانند کاربران را بلاک کنند.")
+                return CHOOSING_ROLE
+            
+            # Parse block data: block_user_id_thread_id
+            parts = query.data.split("_")
+            if len(parts) >= 3:
+                blocked_user_id = int(parts[1])
+                thread_id = int(parts[2])
+                
+                # Block the user
+                self.db.block_user(query.from_user.id, blocked_user_id, "بلاک شده توسط مسئول")
+                
+                # Create new keyboard with unblock button
+                new_keyboard = [
+                    [InlineKeyboardButton("🔓 خارج کردن از بلاک", callback_data=f"unblock_{blocked_user_id}_{thread_id}")],
+                    [InlineKeyboardButton("📋 لیست کاربران بلاک شده", callback_data=f"blocks_{query.from_user.id}")]
+                ]
+                new_reply_markup = InlineKeyboardMarkup(new_keyboard)
+                
+                # Update the message to show user is blocked with new keyboard
+                await query.edit_message_text(
+                    text=f"✅ **کاربر بلاک شد!**\n\n"
+                    f"🆔 شناسه کاربر: `{blocked_user_id}`\n"
+                    f"🆔 شناسه گفتگو: #{thread_id}\n\n"
+                    f"کاربر دیگر نمی‌تواند پیام ارسال کند.",
+                    parse_mode=ParseMode.MARKDOWN,
+                    reply_markup=new_reply_markup
+                )
+            return CHOOSING_ROLE
+        
+        elif query.data.startswith("unblock_"):
+            # Check if user is admin
+            if not self.is_admin_user(query.from_user.id):
+                await query.answer("❌ فقط مسئولین می‌توانند کاربران را از بلاک خارج کنند.")
+                return CHOOSING_ROLE
+            
+            # Parse unblock data: unblock_user_id_thread_id
+            parts = query.data.split("_")
+            if len(parts) >= 3:
+                blocked_user_id = int(parts[1])
+                thread_id = int(parts[2])
+                
+                # Unblock the user
+                self.db.unblock_user(query.from_user.id, blocked_user_id)
+                
+                # Create new keyboard with block button
+                new_keyboard = [
+                    [InlineKeyboardButton("🔒 بلاک کاربر", callback_data=f"block_{blocked_user_id}_{thread_id}")],
+                    [InlineKeyboardButton("📋 لیست کاربران بلاک شده", callback_data=f"blocks_{query.from_user.id}")]
+                ]
+                new_reply_markup = InlineKeyboardMarkup(new_keyboard)
+                
+                # Update the message to show user is unblocked with new keyboard
+                await query.edit_message_text(
+                    text=f"✅ **کاربر از بلاک خارج شد!**\n\n"
+                    f"🆔 شناسه کاربر: `{blocked_user_id}`\n"
+                    f"🆔 شناسه گفتگو: #{thread_id}\n\n"
+                    f"کاربر می‌تواند دوباره پیام ارسال کند.",
+                    parse_mode=ParseMode.MARKDOWN,
+                    reply_markup=new_reply_markup
+                )
+            return CHOOSING_ROLE
+        
+        elif query.data.startswith("blocks_"):
+            # Check if user is admin
+            if not self.is_admin_user(query.from_user.id):
+                await query.answer("❌ فقط مسئولین می‌توانند لیست کاربران بلاک شده را مشاهده کنند.")
+                return CHOOSING_ROLE
+            
+            # Parse admin user ID
+            admin_user_id = int(query.data.split("_")[1])
+            
+            # Get blocked users
+            blocked_users = self.db.get_blocked_users(admin_user_id)
+            
+            if not blocked_users:
+                await query.edit_message_text(
+                    text="📋 **لیست کاربران بلاک شده**\n\n"
+                    "هیچ کاربری بلاک نشده است.",
+                    parse_mode=ParseMode.MARKDOWN
+                )
+            else:
+                text = "📋 **لیست کاربران بلاک شده:**\n\n"
+                for i, blocked in enumerate(blocked_users[:10], 1):  # Show first 10
+                    text += f"{i}. شناسه: `{blocked['user_id']}`\n"
+                    text += f"   تاریخ: {blocked['blocked_at'][:16]}\n"
+                    if blocked['reason']:
+                        text += f"   دلیل: {blocked['reason']}\n"
+                    text += "\n"
+                
+                if len(blocked_users) > 10:
+                    text += f"\n... و {len(blocked_users) - 10} کاربر دیگر"
+                
+                await query.edit_message_text(
+                    text=text,
+                    parse_mode=ParseMode.MARKDOWN
+                )
+            return CHOOSING_ROLE
         
         elif query.data.startswith("role_"):
             role_id = int(query.data.split("_")[1])
@@ -286,8 +373,25 @@ class EnhancedCouncilBot:
                 await query.edit_message_text("❌ خطا: مسئول مورد نظر یافت نشد.")
                 return ConversationHandler.END
             
-            # Store selected role in user state
+            # Check if user is blocked by this specific admin
             user_id = query.from_user.id
+            admin_user_id = role['user_id']
+            is_blocked = self.db.is_user_blocked(admin_user_id, user_id)
+            
+            if is_blocked:
+                # User is blocked by this admin - show error message
+                await query.edit_message_text(
+                    f"❌ **شما توسط {role['role_name']} بلاک شده‌اید.**\n\n"
+                    f"نمی‌توانید با این مسئول ارتباط برقرار کنید.\n"
+                    f"لطفاً مسئول دیگری انتخاب کنید.",
+                    parse_mode=ParseMode.MARKDOWN,
+                    reply_markup=InlineKeyboardMarkup([[
+                        InlineKeyboardButton("🏠 منوی اصلی", callback_data="back_to_menu")
+                    ]])
+                )
+                return CHOOSING_ROLE
+            
+            # Store selected role in user state
             self.user_states[user_id] = {
                 'selected_role': role,
                 'thread_id': None
@@ -301,8 +405,6 @@ class EnhancedCouncilBot:
                 # Show active thread with inline keyboard
                 keyboard = [
                     [InlineKeyboardButton("📝 ارسال پیام", callback_data="send_message")],
-                    [InlineKeyboardButton("🆕 گفتگوی جدید", callback_data="new_thread")],
-                    [InlineKeyboardButton("📋 گفتگوهای قبلی", callback_data="show_threads")],
                     [InlineKeyboardButton("🏠 منوی اصلی", callback_data="back_to_menu")]
                 ]
                 reply_markup = InlineKeyboardMarkup(keyboard)
@@ -319,7 +421,6 @@ class EnhancedCouncilBot:
                 # Show new conversation with inline keyboard
                 keyboard = [
                     [InlineKeyboardButton("📝 ارسال پیام", callback_data="send_message")],
-                    [InlineKeyboardButton("📋 گفتگوهای قبلی", callback_data="show_threads")],
                     [InlineKeyboardButton("🏠 منوی اصلی", callback_data="back_to_menu")]
                 ]
                 reply_markup = InlineKeyboardMarkup(keyboard)
@@ -334,148 +435,6 @@ class EnhancedCouncilBot:
                 )
             
             return CHOOSING_ROLE
-    
-    async def continue_thread(self, update: Update, context: ContextTypes.DEFAULT_TYPE, thread_id: int):
-        """Continue an existing thread"""
-        query = update.callback_query
-        user_id = query.from_user.id
-        
-        # Get thread information
-        threads = self.db.get_user_threads(user_id)
-        thread_info = None
-        for thread in threads:
-            if thread['thread_id'] == thread_id:
-                thread_info = thread
-                break
-        
-        if not thread_info:
-            await query.edit_message_text("❌ گفتگوی مورد نظر یافت نشد.")
-            return CHOOSING_ROLE
-        
-        # Get role information
-        role = self.db.get_role_by_id(thread_info['role_id'])
-        if not role:
-            await query.edit_message_text("❌ اطلاعات مسئول یافت نشد.")
-            return CHOOSING_ROLE
-        
-        # Update user state
-        self.user_states[user_id] = {
-            'selected_role': role,
-            'thread_id': thread_id
-        }
-        
-        # Show recent messages
-        messages = self.db.get_thread_messages(thread_id)
-        if messages:
-            text = f"📋 **ادامه گفتگو با {role['role_name']}**\n\n"
-            text += "**آخرین پیام‌ها:**\n"
-            for msg in messages[-3:]:  # Show last 3 messages
-                sender = "👤 شما" if msg['sender_type'] == 'user' else "👨‍💼 مسئول"
-                text += f"{sender}:\n{msg['message_text'][:100]}...\n\n"
-        else:
-            text = f"📋 **ادامه گفتگو با {role['role_name']}**\n\n"
-            text += "هنوز پیامی در این گفتگو وجود ندارد."
-        
-        text += "\n📝 پیام خود را ارسال کنید یا از دستورات زیر استفاده کنید:\n"
-        text += "📝 /new - شروع گفتگوی جدید\n"
-        text += "📋 /history - مشاهده تاریخچه کامل گفتگو\n"
-        text += "🔙 /back - بازگشت به منوی اصلی"
-        
-        # Create reply keyboard for continuing thread
-        keyboard = [
-            [KeyboardButton("🏠 منوی اصلی"), KeyboardButton("📋 گفتگوهای قبلی")],
-            [KeyboardButton("🆕 گفتگوی جدید")]
-        ]
-        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=False)
-        
-        await context.bot.send_message(
-            chat_id=query.from_user.id,
-            text=text,
-            parse_mode=ParseMode.MARKDOWN,
-            reply_markup=reply_markup
-        )
-    
-    async def show_user_threads(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Show user's previous threads with recent messages"""
-        # Handle both callback_query and message
-        if update.callback_query:
-            query = update.callback_query
-            user_id = query.from_user.id
-        else:
-            user_id = update.effective_user.id
-        
-        threads = self.db.get_user_threads(user_id)
-        
-        if not threads:
-            if update.callback_query:
-                keyboard = [[InlineKeyboardButton("🏠 منوی اصلی", callback_data="back_to_menu")]]
-                reply_markup = InlineKeyboardMarkup(keyboard)
-                await query.edit_message_text(
-                    "📋 **هیچ گفتگوی قبلی یافت نشد.**\n\n"
-                    "هنوز هیچ پیامی ارسال نکرده‌اید.",
-                    parse_mode=ParseMode.MARKDOWN,
-                    reply_markup=reply_markup
-                )
-            else:
-                back_to_menu_markup = self.create_back_to_menu_button()
-                await update.message.reply_text(
-                    "📋 **هیچ گفتگوی قبلی یافت نشد.**\n\n"
-                    "هنوز هیچ پیامی ارسال نکرده‌اید.",
-                    parse_mode=ParseMode.MARKDOWN,
-                    reply_markup=back_to_menu_markup
-                )
-            
-            return CHOOSING_ROLE
-        
-        text = "📋 **گفتگوهای قبلی شما:**\n\n"
-        keyboard = []
-        
-        for thread in threads[:10]:  # Show last 10 threads
-            # Get recent messages for this thread
-            recent_messages = self.db.get_thread_messages(thread['thread_id'])
-            
-            status = "🟢 فعال" if thread['is_active'] else "🔴 غیرفعال"
-            text += f"**{thread['role_name']}** - {status}\n"
-            text += f"🆔 شناسه: #{thread['thread_id']}\n"
-            text += f"📅 آخرین فعالیت: {thread['last_activity'][:16]}\n"
-            
-            # Show last 3 messages
-            if recent_messages:
-                text += "📝 **آخرین پیام‌ها:**\n"
-                for msg in recent_messages[-3:]:  # Last 3 messages
-                    sender_icon = "👤" if msg['sender_type'] == 'user' else "👨‍💼"
-                    message_preview = msg['message_text'][:50] + "..." if len(msg['message_text']) > 50 else msg['message_text']
-                    text += f"{sender_icon} {message_preview}\n"
-            
-            text += "\n"
-            
-            keyboard.append([InlineKeyboardButton(
-                f"📝 ادامه گفتگو با {thread['role_name']}", 
-                callback_data=f"continue_thread_{thread['thread_id']}"
-            )])
-        
-        keyboard.append([InlineKeyboardButton("🔙 بازگشت", callback_data="back_to_menu")])
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        if update.callback_query:
-            await query.edit_message_text(
-                text=text,
-                reply_markup=reply_markup,
-                parse_mode=ParseMode.MARKDOWN
-            )
-        else:
-            # Add back to menu button to the existing keyboard
-            keyboard.append([InlineKeyboardButton("🏠 منوی اصلی", callback_data="back_to_menu")])
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            
-            await context.bot.send_message(
-                chat_id=update.effective_user.id,
-                text=text,
-                reply_markup=reply_markup,
-                parse_mode=ParseMode.MARKDOWN
-            )
-    
-
     
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle user messages"""
@@ -529,16 +488,13 @@ class EnhancedCouncilBot:
                 if thread_id:
                     keyboard = [
                         [InlineKeyboardButton("📝 ارسال پیام", callback_data="send_message")],
-                        [InlineKeyboardButton("🆕 گفتگوی جدید", callback_data="new_thread")],
-                        [InlineKeyboardButton("📋 گفتگوهای قبلی", callback_data="show_threads")],
                         [InlineKeyboardButton("🏠 منوی اصلی", callback_data="back_to_menu")]
                     ]
                     reply_markup = InlineKeyboardMarkup(keyboard)
                     
                     await context.bot.send_message(
                         chat_id=user_id,
-                        text=f"✅ **گفتگوی فعال**\n\n"
-                        f"مسئول: {role['role_name']}\n"
+                        text=f"✅ **گفتگو با {role['role_name']}**\n\n"
                         f"🆔 شناسه گفتگو: #{thread_id}\n\n"
                         f"برای ارسال پیام، روی «📝 ارسال پیام» کلیک کنید.",
                         reply_markup=reply_markup,
@@ -547,7 +503,6 @@ class EnhancedCouncilBot:
                 else:
                     keyboard = [
                         [InlineKeyboardButton("📝 ارسال پیام", callback_data="send_message")],
-                        [InlineKeyboardButton("📋 گفتگوهای قبلی", callback_data="show_threads")],
                         [InlineKeyboardButton("🏠 منوی اصلی", callback_data="back_to_menu")]
                     ]
                     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -585,33 +540,55 @@ class EnhancedCouncilBot:
         # Send notification to admin
         admin_user_id = role['user_id']
         
+        # Check if user is blocked by this specific admin
+        is_blocked = self.db.is_user_blocked(admin_user_id, update.effective_user.id)
+        
+        if is_blocked:
+            # User is blocked by this admin - don't send message to admin
+            await update.message.reply_text(
+                f"❌ **شما توسط {role['role_name']} بلاک شده‌اید.**\n\n"
+                f"نمی‌توانید به این مسئول پیام ارسال کنید.\n"
+                f"لطفاً مسئول دیگری انتخاب کنید.",
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=self.create_back_to_menu_button()
+            )
+            return WAITING_FOR_MESSAGE
+        
         # Create admin notification message
         username = update.effective_user.username
         username_display = f"@{username}" if username else "بدون نام کاربری"
         
         admin_message = f"""
-🔔 **پیام جدید از دانشجو**
+📨 **پیام جدید از دانشجو**
+
+👤 **اطلاعات دانشجو:**
+🆔 شناسه: `{update.effective_user.id}`
+👤 نام: {update.effective_user.first_name or 'بدون نام'}
+📝 نام کاربری: {username_display}
+
+💬 **پیام:**
+{message_text}
 
 🆔 **شناسه گفتگو:** #{thread_id}
-👤 **نام کاربر:** {update.effective_user.first_name}
-📝 **نام کاربری:** {username_display}
-🆔 **شناسه کاربر:** {user_id}
-📝 **پیام:** {message_text}
 
 ---
-💬 برای پاسخ، روی این پیام ریپلای کنید.
+برای پاسخ، روی این پیام ریپلای کنید.
         """
         
-        # Send to channel for logging with detailed student info
+        # Create admin keyboard with block button (user is not blocked)
+        admin_keyboard = [
+            [InlineKeyboardButton("🔒 بلاک کاربر", callback_data=f"block_{update.effective_user.id}_{thread_id}")]
+        ]
+        admin_reply_markup = InlineKeyboardMarkup(admin_keyboard)
+        
+        # Send to channel for logging
         channel_message = f"""
-📨 <b>پیام جدید</b>
+📨 **پیام جدید در کانال لاگ**
 
-🆔 <b>شناسه گفتگو:</b> #{thread_id}
-👤 <b>از:</b> {update.effective_user.first_name} ({username_display})
-🆔 <b>شناسه:</b> {user_id}
-📝 <b>به:</b> {role['role_name']}
-📝 <b>پیام:</b> {message_text}
-👤 <b>دانشجو:</b> ID: {user_id} | {username_display} | {update.effective_user.first_name}
+👤 **دانشجو:** {update.effective_user.id} | {username_display} | {update.effective_user.first_name}
+💬 **پیام:** {message_text}
+🆔 **گفتگو:** #{thread_id}
+👨‍💼 **مسئول:** {role['role_name']}
         """
         await self.send_to_channel(context, channel_message)
         
@@ -619,7 +596,8 @@ class EnhancedCouncilBot:
             sent_msg = await context.bot.send_message(
                 chat_id=admin_user_id,
                 text=admin_message,
-                parse_mode=ParseMode.MARKDOWN
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=admin_reply_markup
             )
             
             # Store the mapping between role message and thread
@@ -671,23 +649,7 @@ class EnhancedCouncilBot:
         user_id = update.effective_user.id
         user_state = self.user_states[user_id]
         
-        if command == '/new':
-            # Create new thread
-            selected_role = user_state['selected_role']
-            thread_id = self.db.create_thread(user_id, selected_role['role_id'])
-            user_state['thread_id'] = thread_id
-            
-            back_to_menu_markup = self.create_back_to_menu_button()
-            await update.message.reply_text(
-                f"🆕 **گفتگوی جدید شروع شد!**\n\n"
-                f"مسئول: {selected_role['role_name']}\n"
-                f"🆔 شناسه گفتگو: #{thread_id}\n\n"
-                f"پیام خود را ارسال کنید.",
-                parse_mode=ParseMode.MARKDOWN,
-                reply_markup=back_to_menu_markup
-            )
-        
-        elif command == '/history':
+        if command == '/history':
             # Show thread history
             thread_id = user_state.get('thread_id')
             if thread_id:
@@ -996,25 +958,73 @@ class EnhancedCouncilBot:
             logger.info(f"Sending reply to {target_user_id} with text: {reply_text[:100]}...")
             
             try:
-                # Create back to menu button
-                back_to_menu_markup = self.create_back_to_menu_button()
-                
                 sent_message = None
                 if msg_result:
-                    sent_message = await context.bot.send_message(
-                        chat_id=target_user_id,
-                        text=reply_text,
-                        reply_to_message_id=msg_result[0],
-                        parse_mode=ParseMode.MARKDOWN,
-                        reply_markup=back_to_menu_markup
-                    )
+                    if is_admin:
+                        # Admin sending reply to student - use back to menu button
+                        back_to_menu_markup = self.create_back_to_menu_button()
+                        sent_message = await context.bot.send_message(
+                            chat_id=target_user_id,
+                            text=reply_text,
+                            reply_to_message_id=msg_result[0],
+                            parse_mode=ParseMode.MARKDOWN,
+                            reply_markup=back_to_menu_markup
+                        )
+                    else:
+                        # Student sending reply to admin - add block buttons
+                        is_blocked = self.db.is_user_blocked(admin_user_id, student_user_id)
+                        
+                        if is_blocked:
+                            # User is blocked - show unblock button
+                            admin_keyboard = [
+                                [InlineKeyboardButton("🔓 خارج کردن از بلاک", callback_data=f"unblock_{student_user_id}_{thread_id}")]
+                            ]
+                        else:
+                            # User is not blocked - show block button
+                            admin_keyboard = [
+                                [InlineKeyboardButton("🔒 بلاک کاربر", callback_data=f"block_{student_user_id}_{thread_id}")]
+                            ]
+                        
+                        reply_markup = InlineKeyboardMarkup(admin_keyboard)
+                        sent_message = await context.bot.send_message(
+                            chat_id=target_user_id,
+                            text=reply_text,
+                            reply_to_message_id=msg_result[0],
+                            parse_mode=ParseMode.MARKDOWN,
+                            reply_markup=reply_markup
+                        )
                 else:
-                    sent_message = await context.bot.send_message(
-                        chat_id=target_user_id,
-                        text=reply_text,
-                        parse_mode=ParseMode.MARKDOWN,
-                        reply_markup=back_to_menu_markup
-                    )
+                    if is_admin:
+                        # Admin sending reply to student - use back to menu button
+                        back_to_menu_markup = self.create_back_to_menu_button()
+                        sent_message = await context.bot.send_message(
+                            chat_id=target_user_id,
+                            text=reply_text,
+                            parse_mode=ParseMode.MARKDOWN,
+                            reply_markup=back_to_menu_markup
+                        )
+                    else:
+                        # Student sending reply to admin - add block buttons
+                        is_blocked = self.db.is_user_blocked(admin_user_id, student_user_id)
+                        
+                        if is_blocked:
+                            # User is blocked - show unblock button
+                            admin_keyboard = [
+                                [InlineKeyboardButton("🔓 خارج کردن از بلاک", callback_data=f"unblock_{student_user_id}_{thread_id}")]
+                            ]
+                        else:
+                            # User is not blocked - show block button
+                            admin_keyboard = [
+                                [InlineKeyboardButton("🔒 بلاک کاربر", callback_data=f"block_{student_user_id}_{thread_id}")]
+                            ]
+                        
+                        reply_markup = InlineKeyboardMarkup(admin_keyboard)
+                        sent_message = await context.bot.send_message(
+                            chat_id=target_user_id,
+                            text=reply_text,
+                            parse_mode=ParseMode.MARKDOWN,
+                            reply_markup=reply_markup
+                        )
                 
                 # Save message mapping for future replies
                 if sent_message:
@@ -1360,10 +1370,17 @@ class EnhancedCouncilBot:
                 group=1
             )
             
+            # Add handler for block/unblock callbacks
+            application.add_handler(
+                CallbackQueryHandler(
+                    self.handle_role_selection,
+                    pattern="^(block_|unblock_|blocks_)"
+                ),
+                group=0  # High priority
+            )
+            
             # Start the bot
             logger.info("Starting Enhanced Council Bot...")
-            # Clear any existing webhook
-            application.bot.delete_webhook()
             # Start polling with specific offset
             application.run_polling(drop_pending_updates=True, allowed_updates=Update.ALL_TYPES, close_loop=False)
             

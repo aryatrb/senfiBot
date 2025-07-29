@@ -177,13 +177,13 @@ class Database:
         return None
     
     def get_active_thread(self, user_id: int, role_id: int) -> Optional[int]:
-        """Get active thread for user and role"""
+        """Get thread for user and role - only one thread per user per role"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         
         cursor.execute('''
             SELECT thread_id FROM threads 
-            WHERE user_id = ? AND role_id = ? AND is_active = 1
+            WHERE user_id = ? AND role_id = ?
             ORDER BY last_activity DESC LIMIT 1
         ''', (user_id, role_id))
         
@@ -193,16 +193,34 @@ class Database:
         return result[0] if result else None
     
     def create_thread(self, user_id: int, role_id: int) -> int:
-        """Create a new thread for user and role"""
+        """Create a new thread for user and role - only one thread per user per role"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         
+        # Check if there's already a thread for this user and role
         cursor.execute('''
-            INSERT INTO threads (user_id, role_id)
-            VALUES (?, ?)
+            SELECT thread_id FROM threads 
+            WHERE user_id = ? AND role_id = ?
         ''', (user_id, role_id))
         
-        thread_id = cursor.lastrowid
+        existing_thread = cursor.fetchone()
+        
+        if existing_thread:
+            # Update existing thread to active and update last activity
+            thread_id = existing_thread[0]
+            cursor.execute('''
+                UPDATE threads 
+                SET is_active = 1, last_activity = CURRENT_TIMESTAMP
+                WHERE thread_id = ?
+            ''', (thread_id,))
+        else:
+            # Create new thread
+            cursor.execute('''
+                INSERT INTO threads (user_id, role_id)
+                VALUES (?, ?)
+            ''', (user_id, role_id))
+            thread_id = cursor.lastrowid
+        
         conn.commit()
         conn.close()
         
