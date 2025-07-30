@@ -3,6 +3,7 @@ import os
 import sqlite3
 import fcntl
 import sys
+import asyncio
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional
 
@@ -24,7 +25,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Conversation states
-CHOOSING_ROLE, WAITING_FOR_MESSAGE = range(2)
+CHOOSING_ROLE, WAITING_FOR_MESSAGE, AI_CHAT = range(3)
 
 class EnhancedCouncilBot:
     def __init__(self):
@@ -41,8 +42,62 @@ class EnhancedCouncilBot:
         # Channel ID for logging all messages
         self.CHANNEL_ID = Config.CHANNEL_ID  # Get from config
         
+        # AI System - will be initialized lazily
+        self.ai_system = None
+        self.ai_system_lock = asyncio.Lock()  # For thread safety
+        
         # Load message mappings from database on startup
         self.load_message_mappings()
+    
+    async def get_ai_system(self):
+        """Get AI system instance - lazy loading with thread safety"""
+        if self.ai_system is None:
+            async with self.ai_system_lock:
+                # Double-check pattern to avoid race conditions
+                if self.ai_system is None:
+                    try:
+                        import sys
+                        import os
+                        
+                        # Add ai directory to Python path
+                        ai_dir = os.path.join(os.path.dirname(__file__), 'ai')
+                        if ai_dir not in sys.path:
+                            sys.path.insert(0, ai_dir)
+                        
+                        logger.info(f"AI directory added to path: {ai_dir}")
+                        
+                        # Check if required files exist
+                        database_file = os.path.join(ai_dir, 'test_channels_database.json')
+                        config_file = os.path.join(ai_dir, 'multi_channel_config.json')
+                        
+                        if not os.path.exists(database_file):
+                            raise FileNotFoundError(f"Database file not found: {database_file}")
+                        
+                        if not os.path.exists(config_file):
+                            logger.warning(f"Config file not found: {config_file}, using default")
+                        
+                        from langchain_rag_system import LangChainRAGSystem
+                        
+                        # Initialize AI system with absolute paths
+                        self.ai_system = LangChainRAGSystem(
+                            database_file=database_file,
+                            config_file=config_file
+                        )
+                        
+                        logger.info("AI system initialized successfully")
+                    except ImportError as e:
+                        logger.error(f"Import error in AI system: {e}")
+                        raise
+                    except FileNotFoundError as e:
+                        logger.error(f"File not found error in AI system: {e}")
+                        raise
+                    except Exception as e:
+                        logger.error(f"Failed to initialize AI system: {e}")
+                        import traceback
+                        logger.error(f"Traceback: {traceback.format_exc()}")
+                        raise
+        
+        return self.ai_system
     
     async def send_to_channel(self, context: ContextTypes.DEFAULT_TYPE, message: str, parse_mode: str = 'HTML'):
         """Send message to the logging channel"""
@@ -121,6 +176,7 @@ class EnhancedCouncilBot:
             )])
         
         keyboard.append([InlineKeyboardButton("👥 گروه شورای صنفی", url="https://t.me/shora_sharif")])
+        keyboard.append([InlineKeyboardButton("🤖 چت با هوش مصنوعی", callback_data="ai_chat")])
         keyboard.append([InlineKeyboardButton("🆔 شناسه من", callback_data="get_user_id")])
         keyboard.append([InlineKeyboardButton("❓ راهنما", callback_data="help")])
         
@@ -172,6 +228,10 @@ class EnhancedCouncilBot:
         elif query.data == "help":
             await self.show_help(update, context)
             return CHOOSING_ROLE
+        
+        elif query.data == "ai_chat":
+            await self.show_ai_chat_menu(update, context)
+            return AI_CHAT
         
         elif query.data == "back_to_menu":
             await self.show_role_menu(update, context)
@@ -355,9 +415,6 @@ class EnhancedCouncilBot:
                     if blocked['reason']:
                         text += f"   دلیل: {blocked['reason']}\n"
                     text += "\n"
-                
-                if len(blocked_users) > 10:
-                    text += f"\n... و {len(blocked_users) - 10} کاربر دیگر"
                 
                 await query.edit_message_text(
                     text=text,
@@ -1273,6 +1330,41 @@ class EnhancedCouncilBot:
                 logger.error(f"Error showing threads: {e}")
                 await update.message.reply_text(f"❌ خطا: {str(e)}")
     
+    async def show_ai_chat_menu(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Show AI chat menu"""
+        query = update.callback_query
+        
+        ai_chat_text = """
+🤖 **چت با هوش مصنوعی شورای صنفی**
+
+**این چت‌بات چه کاری انجام می‌دهد؟**
+
+این چت‌بات در پیام‌های کانال‌های تلگرام شریف جست‌وجو می‌کند و اطلاعات مربوطه را از آن‌ها جمع‌آوری و با ذکر منبع ارسال می‌کند.
+
+**ویژگی‌ها:**
+• 🔍 جستجوی هوشمند در کانال‌های دانشگاه شریف
+• 📊 جمع‌آوری اطلاعات از منابع مختلف
+• 📝 ارائه پاسخ با ذکر منبع
+• ⚡ پاسخ سریع و دقیق
+
+**نحوه استفاده:**
+پیام خود را ارسال کنید و منتظر پاسخ بمانید.
+
+**مثال سوالات:**
+• "زمان ثبت‌نام ترم جدید چه زمانی است؟"
+• "شرایط استفاده از خوابگاه چیست؟"
+• "آخرین اخبار شورای صنفی چیست؟"
+        """
+        
+        keyboard = [[InlineKeyboardButton("🔙 بازگشت", callback_data="back_to_menu")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(
+            text=ai_chat_text,
+            reply_markup=reply_markup,
+            parse_mode=ParseMode.MARKDOWN
+        )
+
     async def show_help(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Show help information"""
         query = update.callback_query
@@ -1304,6 +1396,466 @@ class EnhancedCouncilBot:
             reply_markup=reply_markup,
             parse_mode=ParseMode.MARKDOWN
         )
+
+    async def handle_ai_chat(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle AI chat messages"""
+        try:
+            # Send "please wait" message immediately
+            wait_message = await update.message.reply_text(
+                "⏳ لطفا منتظر بمانید...",
+                parse_mode=ParseMode.MARKDOWN
+            )
+            
+            # Get user's question
+            question = update.message.text
+            
+            try:
+                # Get AI system (lazy loading with thread safety)
+                ai_system = await self.get_ai_system()
+                
+                # Get response from AI with improved filtering
+                response = ai_system.query(question)
+                
+                # Post-process response to improve quality
+                response = self.post_process_ai_response(response, question)
+                
+                # Try to delete wait message (ignore errors)
+                try:
+                    await wait_message.delete()
+                except Exception:
+                    pass  # Ignore deletion errors
+                
+                # Send AI response with hyperlinks
+                # Convert markdown links to HTML format for better display
+                import re
+                
+                # More robust markdown to HTML conversion with validation
+                def convert_markdown_links(text):
+                    # Pattern to match markdown links: [text](url)
+                    pattern = r'\[([^\]]+)\]\(([^)]+)\)'
+                    
+                    def replace_link(match):
+                        text = match.group(1)
+                        url = match.group(2)
+                        
+                        # Only allow valid Telegram links
+                        if url.startswith('https://t.me/') or url.startswith('http://t.me/'):
+                            return f'<a href="{url}">{text}</a>'
+                        else:
+                            # For non-Telegram links, just show the text without link
+                            return text
+                    
+                    return re.sub(pattern, replace_link, text)
+                
+                response_with_links = convert_markdown_links(response)
+                
+                # Add warning if no valid links found (only if the original response had links)
+                if 'href=' not in response_with_links and ('https://t.me/' in response or 'http://t.me/' in response):
+                    response_with_links += "\n\n⚠️ **توجه:** هیچ لینک معتبری در پاسخ یافت نشد."
+                
+                await update.message.reply_text(
+                    f"{response_with_links}",
+                    parse_mode=ParseMode.HTML
+                )
+                
+            except ImportError as e:
+                # Try to delete wait message (ignore errors)
+                try:
+                    await wait_message.delete()
+                except Exception:
+                    pass  # Ignore deletion errors
+                
+                await update.message.reply_text(
+                    "❌ **خطا:** سیستم هوش مصنوعی در دسترس نیست.\n\n"
+                    "لطفاً با مسئولین تماس بگیرید.",
+                    parse_mode=ParseMode.MARKDOWN
+                )
+                
+            except Exception as e:
+                # Try to delete wait message (ignore errors)
+                try:
+                    await wait_message.delete()
+                except Exception:
+                    pass  # Ignore deletion errors
+                
+                await update.message.reply_text(
+                    f"❌ **خطا در پردازش:**\n\n{str(e)}",
+                    parse_mode=ParseMode.MARKDOWN
+                )
+                
+        except Exception as e:
+            logger.error(f"Error in AI chat: {e}")
+            await update.message.reply_text(
+                "❌ خطایی رخ داد. لطفاً دوباره تلاش کنید.",
+                parse_mode=ParseMode.MARKDOWN
+            )
+    
+    def post_process_ai_response(self, response: str, question: str) -> str:
+        """Post-process AI response to improve quality and relevance"""
+        import re
+        
+        # Define channel priority weights (higher = more relevant)
+        channel_weights = {
+            'sharif_senfi': 10,      # شورای صنفی - highest priority
+            'sharifdaily': 9,        # روزنامه شریف - official news
+            'sh_counseling': 8,      # مشاوره شریف
+            'dadesokhan': 7,         # دادی سخن
+            'EEResana': 6,           # انجمن علمی
+            'zharfa90': 5,           # ظرفا
+            'Basij_SharifU': 4,      # بسیج
+            'sharifmusicgroup': 1,   # موسیقی - lowest priority
+            'sutmcg': 3,             # گروه کوه
+            'AzzahraaSharif': 2     # انجمن اسلامی
+        }
+        
+        # Extract all links from response
+        link_pattern = r'https://t\.me/([^/\s]+)/(\d+)'
+        links = re.findall(link_pattern, response)
+        
+        # Score and filter links based on relevance
+        scored_links = []
+        seen_links = set()  # To avoid duplicates
+        
+        for channel, message_id in links:
+            full_link = f'https://t.me/{channel}/{message_id}'
+            
+            # Skip if we've already seen this link
+            if full_link in seen_links:
+                continue
+            seen_links.add(full_link)
+            
+            # Get channel weight
+            weight = channel_weights.get(channel, 1)
+            
+            # Check if channel name is relevant to the question
+            relevance_score = self.calculate_relevance_score(channel, question)
+            
+            # Final score = channel_weight * relevance_score
+            final_score = weight * relevance_score
+            
+            scored_links.append({
+                'channel': channel,
+                'message_id': message_id,
+                'full_link': full_link,
+                'score': final_score
+            })
+        
+        # Sort by score (highest first) and keep only top 8 most relevant
+        scored_links.sort(key=lambda x: x['score'], reverse=True)
+        top_links = scored_links[:8]
+        
+        # Filter out low-quality links (score < 1.5) - more lenient threshold
+        filtered_links = [link for link in top_links if link['score'] >= 1.5]
+        
+        # Clean up the response by removing fake source mentions
+        new_response = response
+        
+        # Only remove links that are not in the filtered_links list
+        # Keep the links that we want to preserve
+        links_to_keep = {link['full_link'] for link in filtered_links}
+        
+        # Remove links that are not in our filtered list
+        def remove_unwanted_links(match):
+            link_text = match.group(0)
+            # Check if this link is in our filtered list
+            if any(link in link_text for link in links_to_keep):
+                return link_text  # Keep this link
+            return ''  # Remove this link
+        
+        # Remove unwanted links from the text
+        new_response = re.sub(r'https://t\.me/[^/\s]+/\d+', remove_unwanted_links, new_response)
+        
+        # Handle markdown links - keep only the ones we want
+        def remove_unwanted_markdown_links(match):
+            link_text = match.group(0)
+            link_name = match.group(1)
+            url = match.group(2) if len(match.groups()) > 1 else ''
+            # Check if this link is in our filtered list
+            if any(link in url for link in links_to_keep):
+                return link_text  # Keep this link
+            return link_name  # Keep only the text, remove the link
+        
+        new_response = re.sub(r'\[([^\]]+)\]\((https://t\.me/[^)]+)\)', remove_unwanted_markdown_links, new_response)
+        
+        # Remove fake source sections that mention sources not actually found
+        # Remove lines that look like source lists but don't have actual links
+        new_response = re.sub(r'\*\*منابع:\*\*\s*\n(?:\s*\*\s*\n)*', '', new_response)
+        new_response = re.sub(r'\*\*منابع:\*\*\s*\n(?:\s*\*\s*[^\n]*\n)*', '', new_response)
+        
+        # Remove empty bullet points that might be leftover from fake sources
+        new_response = re.sub(r'\n\s*\*\s*\n', '\n', new_response)
+        new_response = re.sub(r'\n\s*\*\s*$', '', new_response)
+        
+        # Remove fake source mentions with empty parentheses
+        new_response = re.sub(r'\(منبع:\s*\[\]\(\)\)', '', new_response)
+        new_response = re.sub(r'\(منبع:\s*\[\]\([^)]*\)\)', '', new_response)
+        
+        # Remove any remaining empty source mentions
+        new_response = re.sub(r'\*\s*\[\]\(\)', '', new_response)
+        new_response = re.sub(r'\*\s*\[\]\([^)]*\)', '', new_response)
+        
+        # Remove empty markdown links like [sharifdaily]() or [sharif_senfi]()
+        new_response = re.sub(r'\[\w+\]\(\)', '', new_response)
+        new_response = re.sub(r'\[\w+\]\([^)]*\)', '', new_response)
+        
+        # Remove numbered lists with empty links
+        new_response = re.sub(r'\d+\.\s*\[\w+\]\(\)', '', new_response)
+        new_response = re.sub(r'\d+\.\s*\[\w+\]\([^)]*\)', '', new_response)
+        
+        # Clean up multiple newlines
+        new_response = re.sub(r'\n{3,}', '\n\n', new_response)
+        
+        # Ensure proper formatting for bullet points
+        new_response = re.sub(r'•\s*', '• ', new_response)
+        new_response = re.sub(r'\*\s*', '• ', new_response)
+        
+        # Fix bullet point formatting issues
+        new_response = re.sub(r'•\s*•\s*', '• ', new_response)  # Remove double bullets
+        new_response = re.sub(r'•\s*$', '', new_response)  # Remove trailing bullets
+        new_response = re.sub(r'^\s*•\s*', '', new_response)  # Remove leading bullets
+        
+        # Clean up any remaining formatting issues
+        new_response = re.sub(r'\n\s*\n\s*\n', '\n\n', new_response)
+        
+        # Fix specific formatting issues from AI output
+        new_response = re.sub(r'•\s*•\s*•\s*', '• ', new_response)  # Fix triple bullets
+        new_response = re.sub(r'•\s*•\s*', '• ', new_response)  # Fix double bullets
+        new_response = re.sub(r'^\s*•\s*', '', new_response)  # Remove leading bullet
+        new_response = re.sub(r'\n\s*•\s*\n', '\n', new_response)  # Remove empty bullet lines
+        
+        # Clean up section headers
+        new_response = re.sub(r'•\s*([^•\n]+):•\s*', r'**\1:**\n', new_response)
+        
+        # Remove any remaining problematic characters
+        new_response = re.sub(r'•\s*$', '', new_response)  # Remove trailing bullets
+        new_response = re.sub(r'^\s*•\s*', '', new_response)  # Remove leading bullets
+        
+        new_response = new_response.strip()
+        
+        # If no good links found, add a note (only if the original response had links)
+        if not filtered_links and ('https://t.me/' in response or 'http://t.me/' in response):
+            return new_response + "\n\n⚠️ **توجه:** هیچ منبع مرتبط‌ای یافت نشد."
+        
+        # Add filtered links at the end only if we have real sources
+        if filtered_links:
+            # Remove any existing "منابع مرتبط:" section and numbered links from the response
+            new_response = re.sub(r'\*\*منابع مرتبط:\*\*\s*\n(?:\s*\d+\.\s*\[[^\]]+\]\([^)]+\)\s*\n)*', '', new_response)
+            # Also remove any remaining numbered links that might be left
+            new_response = re.sub(r'\n\s*\d+\.\s*\[[^\]]+\]\([^)]+\)\s*\n', '\n', new_response)
+            # Remove any remaining numbered links at the end
+            new_response = re.sub(r'\n\s*\d+\.\s*\[[^\]]+\]\([^)]+\)\s*$', '', new_response)
+            
+            new_response += "\n\n**منابع مرتبط:**\n"
+            for i, link in enumerate(filtered_links, 1):
+                channel_name = self.get_channel_display_name(link['channel'])
+                new_response += f"{i}. [{channel_name}]({link['full_link']})\n"
+        
+        # Final cleanup and formatting
+        new_response = self.final_format_response(new_response)
+        
+        # Clean empty links completely
+        new_response = self.clean_empty_links(new_response)
+        
+        return new_response
+    
+    def final_format_response(self, response: str) -> str:
+        """Final formatting cleanup for AI response"""
+        import re
+        
+        # Replace problematic bullet characters with proper ones
+        response = re.sub(r'•\s*•\s*•\s*', '• ', response)
+        response = re.sub(r'•\s*•\s*', '• ', response)
+        
+        # Fix section headers that start with bullets
+        response = re.sub(r'•\s*([^•\n]+):•\s*', r'**\1:**\n', response)
+        response = re.sub(r'•\s*([^•\n]+):\s*', r'**\1:**\n', response)
+        
+        # Remove empty bullet points
+        response = re.sub(r'\n\s*•\s*\n', '\n', response)
+        response = re.sub(r'\n\s*•\s*$', '', response)
+        
+        # Clean up multiple newlines
+        response = re.sub(r'\n{3,}', '\n\n', response)
+        
+        # Ensure proper spacing around bullet points
+        response = re.sub(r'([^\n])\n•\s*', r'\1\n\n• ', response)
+        
+        # Remove any remaining problematic formatting
+        response = re.sub(r'^\s*•\s*', '', response)
+        response = re.sub(r'•\s*$', '', response)
+        
+        # Fix specific formatting issues
+        response = re.sub(r'([^\n])\n([^\n])\n•\s*', r'\1\n\n• \2', response)
+        response = re.sub(r'^\s*•\s*([^•\n]+)\s*•\s*', r'**\1:**\n', response)
+        
+        # Clean up any remaining bullet artifacts
+        response = re.sub(r'•\s*•\s*([^•\n]+)', r'• \1', response)
+        response = re.sub(r'([^•\n]+)\s*•\s*•\s*', r'\1', response)
+        
+        # Ensure proper line breaks
+        response = re.sub(r'([^\n])\n([^\n])\n•\s*([^\n]+)', r'\1\n\n• \3', response)
+        
+        # Final bullet point cleanup
+        response = re.sub(r'^\s*•\s*([^•\n]+)\s*•\s*', r'**\1:**\n', response)
+        response = re.sub(r'•\s*([^•\n]+)\s*•\s*', r'• \1', response)
+        
+        # Add proper spacing before bullet points
+        response = re.sub(r'([^\n])\n•\s*([^\n]+)', r'\1\n\n• \2', response)
+        
+        # Remove empty markdown links and numbered lists with empty links
+        response = re.sub(r'\[\w+\]\(\)', '', response)
+        response = re.sub(r'\[\w+\]\([^)]*\)', '', response)
+        response = re.sub(r'\d+\.\s*\[\w+\]\(\)', '', response)
+        response = re.sub(r'\d+\.\s*\[\w+\]\([^)]*\)', '', response)
+        
+        # Remove empty numbered lists
+        response = re.sub(r'\n\s*\d+\.\s*\n', '\n', response)
+        response = re.sub(r'\n\s*\d+\.\s*$', '', response)
+        response = re.sub(r'\n\s*\d+\.\s*$', '', response)
+        
+        # Remove numbered lists with only whitespace
+        response = re.sub(r'\n\s*\d+\.\s*\s*\n', '\n', response)
+        response = re.sub(r'\n\s*\d+\.\s*\s*$', '', response)
+        
+        # Remove the entire "منابع مرتبط:" section if it only contains empty or whitespace-only numbered items (with possible blank lines)
+        lines = response.split('\n')
+        cleaned_lines = []
+        i = 0
+        while i < len(lines):
+            if lines[i].strip() == '**منابع مرتبط:**':
+                j = i + 1
+                # Collect all lines that are empty or just numbers
+                while j < len(lines) and (not lines[j].strip() or lines[j].strip().isdigit() or (lines[j].strip().endswith('.') and lines[j].strip()[:-1].isdigit())):
+                    j += 1
+                # Only skip if ALL lines after header are empty or just numbers (no actual links)
+                if all((not l.strip() or l.strip().isdigit() or (l.strip().endswith('.') and l.strip()[:-1].isdigit()) or 'https://t.me/' not in l) for l in lines[i+1:j]):
+                    i = j
+                    continue
+            cleaned_lines.append(lines[i])
+            i += 1
+        response = '\n'.join(cleaned_lines)
+        # Remove any remaining lines that are just a number and dot
+        import re
+        response = re.sub(r'^\s*\d+\.\s*$', '', response, flags=re.MULTILINE)
+        # Remove lines that are just numbers with empty parentheses
+        response = re.sub(r'^\s*\d+\.\s*[^()]*\(\s*\)\s*$', '', response, flags=re.MULTILINE)
+        
+        # Remove any remaining numbered lines that are essentially empty
+        response = re.sub(r'^\s*\d+\.\s*\s*$', '', response, flags=re.MULTILINE)
+        
+        # Remove consecutive empty lines
+        response = re.sub(r'\n{3,}', '\n\n', response)
+        
+        # Replace markdown bold headers and bold text with Persian guillemets
+        # Headers: **عنوان:** -> «عنوان:»
+        response = re.sub(r'\*\*([^*\n]+?):\*\*', r'«\1:»', response)
+        # Bold text: **متن** -> «متن»
+        response = re.sub(r'\*\*([^*\n]+)\*\*', r'«\1»', response)
+        
+        # Add proper spacing after headers (add newline after «عنوان:»)
+        response = re.sub(r'«([^»\n]+):»', r'«\1:»\n', response)
+        
+        return response.strip()
+    
+    def clean_empty_links(self, response: str) -> str:
+        """Remove empty links and numbered lists completely"""
+        import re
+        
+        # Remove empty markdown links
+        response = re.sub(r'\[\w+\]\(\)', '', response)
+        response = re.sub(r'\[\w+\]\([^)]*\)', '', response)
+        
+        # Remove numbered lists with empty links
+        response = re.sub(r'\d+\.\s*\[\w+\]\(\)', '', response)
+        response = re.sub(r'\d+\.\s*\[\w+\]\([^)]*\)', '', response)
+        
+        # Remove empty numbered lists (just numbers with no content)
+        response = re.sub(r'\n\s*\d+\.\s*\n', '\n', response)
+        response = re.sub(r'\n\s*\d+\.\s*$', '', response)
+        response = re.sub(r'\n\s*\d+\.\s*\s*\n', '\n', response)
+        response = re.sub(r'\n\s*\d+\.\s*\s*$', '', response)
+        
+        # Remove numbered lists that are just numbers with whitespace
+        response = re.sub(r'\n\s*\d+\.\s*\s*\n', '\n', response)
+        response = re.sub(r'\n\s*\d+\.\s*\s*$', '', response)
+        
+        # Remove the entire "منابع مرتبط:" section if it only contains empty items
+        lines = response.split('\n')
+        cleaned_lines = []
+        skip_section = False
+        
+        for i, line in enumerate(lines):
+            if '**منابع مرتبط:**' in line:
+                # Check if the next few lines are just empty numbered lists (no actual links)
+                next_lines = lines[i+1:i+6] if i+6 <= len(lines) else lines[i+1:]
+                if all(re.match(r'^\s*\d+\.\s*$', l.strip()) for l in next_lines if l.strip()) and not any('https://t.me/' in l for l in next_lines):
+                    skip_section = True
+                    continue
+            elif skip_section and line.strip() and not line.strip().startswith('⚠️'):
+                skip_section = False
+            
+            if not skip_section:
+                cleaned_lines.append(line)
+        
+        response = '\n'.join(cleaned_lines)
+        
+        # Simple approach: remove any line that's just a number with dot
+        response = re.sub(r'^\s*\d+\.\s*$', '', response, flags=re.MULTILINE)
+        
+        # Remove consecutive empty lines
+        response = re.sub(r'\n{3,}', '\n\n', response)
+        
+        return response.strip()
+    
+    def calculate_relevance_score(self, channel: str, question: str) -> float:
+        """Calculate relevance score between channel and question"""
+        # Channel priority weights (higher = more relevant)
+        channel_weights = {
+            'sharif_senfi': 10,      # شورای صنفی - highest priority
+            'sharifdaily': 9,        # روزنامه شریف - official news
+            'sh_counseling': 8,      # مشاوره شریف
+            'yarigaran_sharif': 8,   # کانون یاریگران - high priority
+            'dadesokhan': 7,         # دادی سخن
+            'EEResana': 6,           # انجمن علمی
+            'zharfa90': 5,           # ظرفا
+            'Basij_SharifU': 4,      # بسیج
+            'sharifmusicgroup': 1,   # موسیقی - lowest priority
+            'sutmcg': 3,             # گروه کوه
+            'AzzahraaSharif': 2     # انجمن اسلامی
+        }
+        
+        # Get base channel weight
+        base_score = channel_weights.get(channel, 1)
+        
+        # Simple relevance calculation without topic bias
+        relevance_score = base_score
+        
+        # General relevance boost for person queries in main channels (without hardcoding specific names)
+        # Check if question contains person-related keywords (names, titles, etc.)
+        person_indicators = ['کیست', 'کیه', 'چه کسی', 'چه کیه', 'معرفی', 'بیوگرافی', 'زندگینامه']
+        if any(indicator in question for indicator in person_indicators):
+            # Boost relevance for main channels when asking about people
+            if channel in ['sharif_senfi', 'sharifdaily', 'AzzahraaSharif']:
+                relevance_score += 1.0  # Moderate boost for person queries in main channels
+        
+        return relevance_score
+    
+    def get_channel_display_name(self, channel: str) -> str:
+        """Get display name for channel"""
+        display_names = {
+            'sharif_senfi': 'شورای صنفی دانشجویان',
+            'sharifdaily': 'روزنامه شریف',
+            'sh_counseling': 'مشاوره شریف',
+            'yarigaran_sharif': 'کانون یاریگران',
+            'dadesokhan': 'دادی سخن',
+            'EEResana': 'انجمن علمی مهندسی برق',
+            'zharfa90': 'ظرفا',
+            'Basij_SharifU': 'بسیج دانشجویی',
+            'sharifmusicgroup': 'گروه موسیقی',
+            'sutmcg': 'گروه کوه دانشجوی شریف',
+            'AzzahraaSharif': 'انجمن اسلامی'
+        }
+        return display_names.get(channel, channel)
     
     def run(self):
         """Run the bot"""
@@ -1335,6 +1887,11 @@ class EnhancedCouncilBot:
                     WAITING_FOR_MESSAGE: [
                         CallbackQueryHandler(self.handle_role_selection),
                         MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.REPLY, self.handle_message),
+                        CommandHandler('cancel', self.cancel)
+                    ],
+                    AI_CHAT: [
+                        MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.REPLY, self.handle_ai_chat),
+                        CallbackQueryHandler(self.handle_role_selection),
                         CommandHandler('cancel', self.cancel)
                     ]
                 },

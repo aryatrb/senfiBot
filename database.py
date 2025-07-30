@@ -219,7 +219,7 @@ class Database:
                 INSERT INTO threads (user_id, role_id)
                 VALUES (?, ?)
             ''', (user_id, role_id))
-            thread_id = cursor.lastrowid
+        thread_id = cursor.lastrowid
         
         conn.commit()
         conn.close()

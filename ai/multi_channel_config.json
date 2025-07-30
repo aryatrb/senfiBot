@@ -1,0 +1,276 @@
+{
+  "channels": [
+    {
+      "username": "anjomanSUT",
+      "name": "انجمن اسلامی دانشجویان دانشگاه صنعتی شریف",
+      "description": "تشکل",
+      "active": true,
+      "priority": 1
+    },
+    {
+      "username": "AzzahraaSharif",
+      "name": "هیأت الزهراء(س) دانشگاه شریف",
+      "description": "گروه",
+      "active": true,
+      "priority": 2
+    },
+    {
+      "username": "Basij_SharifU",
+      "name": "بسیج",
+      "description": "تشکل",
+      "active": true,
+      "priority": 2
+    },
+    {
+      "username": "SUTdaftarm",
+      "name": "دفتر مطالعات فرهنگی",
+      "description": "گروه",
+      "active": true,
+      "priority": 2
+    },
+    {
+      "username": "EEResana",
+      "name": "رسانا دانشکده برق",
+      "description": "گروه",
+      "active": true,
+      "priority": 2
+    },
+    {
+      "username": "enqelabsq",
+      "name": "نشریه میدان انقلاب",
+      "description": "نشریه",
+      "active": true,
+      "priority": 2
+    },
+    {
+      "username": "Kimia_Group",
+      "name": "گروه علمی دانشجویی کیمیا (دانشکده مهندسی شیمی ونفت)",
+      "description": "دانشکده",
+      "active": true,
+      "priority": 2
+    },
+    {
+      "username": "ksasharif",
+      "name": "كانون شعر و ادب",
+      "description": "گروه",
+      "active": true,
+      "priority": 2
+    },
+    {
+      "username": "MehvarGroup",
+      "name": "انجمن علمی محور (دانشکده مکانیک)",
+      "description": "دانشکده",
+      "active": true,
+      "priority": 2
+    },
+    {
+      "username": "sharif_senfi_ae",
+      "name": "شورای صنفی دانشکده هوافضا",
+      "description": "دانشکده",
+      "active": true,
+      "priority": 1
+    },
+    {
+      "username": "sh_counseling",
+      "name": "مرکز مشاوره",
+      "description": "رسمی",
+      "active": true,
+      "priority": 1
+    },
+    {
+      "username": "sharif_senfi",
+      "name": "شورای صنفی دانشگاه صنعتی شریف",
+      "description": "شورای صنفی مرکزی",
+      "active": true,
+      "priority": 1
+    },
+    {
+      "username": "sharifAstronomy",
+      "name": "گروه نجوم شریف",
+      "description": "گروه",
+      "active": true,
+      "priority": 2
+    },
+    {
+      "username": "dadesokhan",
+      "name": "کانال اطلاع رسانی جامع اخبار و رویداد های دانشگاه",
+      "description": "غیر رسمی",
+      "active": true,
+      "priority": 1
+    },
+    {
+      "username": "sharifdaily",
+      "name": "روزنامه شریف",
+      "description": "نشریه",
+      "active": true,
+      "priority": 1
+    },
+    {
+      "username": "sharifmusicgroup",
+      "name": "کانون موسیقی شریف",
+      "description": "گروه",
+      "active": true,
+      "priority": 2
+    },
+    {
+      "username": "ssaAEsharif",
+      "name": "انجمن علمی دانشکده هوافضا",
+      "description": "گروه",
+      "active": true,
+      "priority": 2
+    },
+    {
+      "username": "ssc_public",
+      "name": "انجمن علمی دانشکده مهندسی کامپیوتر",
+      "description": "گروه",
+      "active": true,
+      "priority": 2
+    },
+    {
+      "username": "sutmcg",
+      "name": "گروه کوه دانشجوی شریف",
+      "description": "گروه",
+      "active": true,
+      "priority": 2
+    },
+    {
+      "username": "yarigaran",
+      "name": "کانون یاریگران",
+      "description": "گروه",
+      "active": true,
+      "priority": 2
+    },
+    {
+      "username": "zharfa90",
+      "name": "انجمن فیزیک، فلسفه علم،ریاضی",
+      "description": "گروه",
+      "active": true,
+      "priority": 2
+    },
+    {
+      "username": "Sharif_Senfi_EE",
+      "name": "شورای صنفی دانشکده مهندسی برق",
+      "description": "شورای صنفی دانشکده",
+      "active": true,
+      "priority": 1
+    },
+    {
+      "username": "Sharif_Senfi_CHP",
+      "name": "شورای صنفی دانشکده مهندسی شیمی و نفت",
+      "description": "شورای صنفی دانشکده",
+      "active": true,
+      "priority": 1
+    },
+    {
+      "username": "Sharif_Senfi_IE",
+      "name": "شورای صنفی دانشکده مهندسی صنایع",
+      "description": "شورای صنفی دانشکده",
+      "active": true,
+      "priority": 1
+    },
+    {
+      "username": "Sharif_Senfi_CiE",
+      "name": "شورای صنفی دانشکده مهندسی عمران",
+      "description": "شورای صنفی دانشکده",
+      "active": true,
+      "priority": 1
+    },
+    {
+      "username": "Sharif_Senfi_CE",
+      "name": "شورای صنفی دانشکده مهندسی کامپیوتر",
+      "description": "شورای صنفی دانشکده",
+      "active": true,
+      "priority": 1
+    },
+    {
+      "username": "Sharif_Senfi_ME",
+      "name": "شورای صنفی دانشکده مهندسی مکانیک",
+      "description": "شورای صنفی دانشکده",
+      "active": true,
+      "priority": 1
+    },
+    {
+      "username": "Sharif_Senfi_MSE",
+      "name": "شورای صنفی دانشکده مهندسی و علم مواد",
+      "description": "شورای صنفی دانشکده",
+      "active": true,
+      "priority": 1
+    },
+    {
+      "username": "Sharif_Senfi_MathCS",
+      "name": "شورای صنفی دانشکده علوم ریاضی",
+      "description": "شورای صنفی دانشکده",
+      "active": true,
+      "priority": 1
+    },
+    {
+      "username": "Sharif_Senfi_Chem",
+      "name": "شورای صنفی دانشکده شیمی",
+      "description": "شورای صنفی دانشکده",
+      "active": true,
+      "priority": 1
+    },
+    {
+      "username": "Sharif_Senfi_Phys",
+      "name": "شورای صنفی دانشکده فیزیک",
+      "description": "شورای صنفی دانشکده",
+      "active": true,
+      "priority": 1
+    },
+    {
+      "username": "Sharif_Senfi_GSME",
+      "name": "شورای صنفی دانشکده مدیریت و اقتصاد",
+      "description": "شورای صنفی دانشکده",
+      "active": true,
+      "priority": 1
+    },
+    {
+      "username": "Sharif_Senfi_Enrg",
+      "name": "شورای صنفی دانشکده مهندسی انرژی",
+      "description": "شورای صنفی دانشکده",
+      "active": true,
+      "priority": 1
+    },
+    {
+      "username": "Sharif_Senfi_Ahmadi",
+      "name": "شورای صنفی خوابگاه احمدی روشن",
+      "description": "شورای صنفی خوابگاه",
+      "active": true,
+      "priority": 2
+    },
+    {
+      "username": "sharif_senfi_tarasht3",
+      "name": "شورای صنفی خوابگاه سلیمانی",
+      "description": "شورای صنفی خوابگاه",
+      "active": true,
+      "priority": 2
+    },
+    {
+      "username": "Sharif_Senfi_Tarashte2",
+      "name": "شورای صنفی خوابگاه طرشت ۲",
+      "description": "شورای صنفی خوابگاه",
+      "active": true,
+      "priority": 2
+    },
+    {
+      "username": "Sharif_Senfi_Media",
+      "name": "کانال پشتیبان شورای صنفی",
+      "description": "شورای صنفی",
+      "active": true,
+      "priority": 1
+    }
+  ],
+  "search_settings": {
+    "max_messages_per_channel": 50,
+    "top_k_results": 10,
+    "min_score_threshold": 1,
+    "search_timeout": 20,
+    "channels_per_batch": 5,
+    "max_batches": 10
+  },
+  "llm_settings": {
+    "model": "gemini-2.0-flash-lite",
+    "max_context_length": 4000,
+    "temperature": 0.7
+  }
+} 
